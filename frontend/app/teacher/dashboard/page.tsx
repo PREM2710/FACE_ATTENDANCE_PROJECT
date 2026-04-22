@@ -2,15 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Users, 
-  Edit3, 
-  Camera, 
-  BarChart3, 
-  LogOut,
-  Menu,
-  X
-} from "lucide-react";
+import { BarChart3, Camera, Edit3, LogOut, Users } from "lucide-react";
+
+import { apiRequest } from "../../services/api";
+import StatusPill from "../../components/StatusPill";
 
 export default function TeacherDashboard() {
   const router = useRouter();
@@ -18,7 +13,6 @@ export default function TeacherDashboard() {
   const [teacherName, setTeacherName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [loading, setLoading] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeCard, setActiveCard] = useState<number | null>(null);
 
   useEffect(() => {
@@ -50,10 +44,7 @@ export default function TeacherDashboard() {
 
   const handleLogout = async () => {
     try {
-      await fetch("http://127.0.0.1:5000/api/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      await apiRequest("/api/logout", { method: "POST" });
     } catch {
       // Ignore errors on logout
     }
@@ -117,143 +108,77 @@ export default function TeacherDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200 shadow-sm">
-        <div className="px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left Section */}
-            <div className="flex items-center gap-4">
-              <button 
-                className="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                aria-label="Toggle menu"
-              >
-                {mobileMenuOpen ? <X className="w-6 h-6 text-slate-700" /> : <Menu className="w-6 h-6 text-slate-700" />}
-              </button>
-              
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
-                  <Users className="w-6 h-6 text-white" />
-                </div>
+    <div className="min-h-screen bg-transparent px-4 py-8 sm:px-6">
+      <div className="mx-auto max-w-7xl">
+        <header className="rounded-[34px] border border-white/70 bg-[var(--surface)] p-6 shadow-xl shadow-slate-900/5 backdrop-blur">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-[24px] bg-slate-900 p-4 text-white shadow-lg shadow-slate-900/20">
+                <Users className="h-7 w-7" />
+              </div>
+              <div className="space-y-3">
+                <StatusPill label="Faculty Control Center" tone="info" />
                 <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Teacher Dashboard</h1>
-                  <p className="text-slate-600 text-sm font-medium">Welcome back, {teacherName}</p>
-                  {employeeId && <p className="text-slate-500 text-xs">ID: {employeeId}</p>}
+                  <h1 className="text-4xl font-bold text-slate-900">Teacher dashboard</h1>
+                  <p className="mt-2 max-w-2xl text-base text-slate-600">
+                    Start attendance sessions, manage student records, and review class performance from one clean workspace.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <StatusPill label={teacherName || "Teacher"} tone="success" />
+                  {employeeId ? <StatusPill label={`ID ${employeeId}`} tone="neutral" /> : null}
                 </div>
               </div>
             </div>
 
-            {/* Right Section */}
-            <div className="flex items-center gap-2 sm:gap-4">
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-200 hover:border-red-300"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:block font-medium">Logout</span>
-              </button>
-            </div>
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 self-start rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:-translate-y-0.5 hover:bg-rose-100"
+            >
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-white/95 backdrop-blur-lg border-b border-slate-200 shadow-lg">
-          <div className="px-4 sm:px-6 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {teacherMenuItems.map((item, idx) => (
-                <div 
-                  key={idx}
-                  onClick={() => {
-                    router.push(item.path);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-md ${item.bgColor} ${item.borderColor}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg bg-gradient-to-br ${item.color} shadow-sm`}>
-                      <div className="text-white">
-                        {item.icon}
-                      </div>
-                    </div>
-                    <span className="text-slate-700 font-semibold text-sm">{item.title}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="px-4 sm:px-6 py-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Welcome Message */}
-          <div className="mb-12 text-center">
-            <div className="inline-flex items-center gap-3 mb-4">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Teacher Dashboard</span>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-3 tracking-tight">
-              Teacher Management Hub
-            </h2>
-            <p className="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed">
-              Manage student registrations, conduct sessions, and monitor attendance with advanced face recognition technology
-            </p>
-          </div>
-
-          {/* Teacher Management Tools Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <main className="mt-8">
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {teacherMenuItems.map((item, idx) => (
               <div
                 key={idx}
                 onMouseEnter={() => setActiveCard(idx)}
                 onMouseLeave={() => setActiveCard(null)}
                 onClick={() => router.push(item.path)}
-                className={`relative p-6 rounded-2xl border-2 transition-all duration-500 cursor-pointer group overflow-hidden bg-white hover:shadow-xl ${
+                className={`relative overflow-hidden rounded-[30px] border transition-all duration-500 cursor-pointer group bg-white/90 p-6 shadow-lg shadow-slate-900/5 ${
                   item.borderColor
-                } ${
-                  activeCard === idx ? 'scale-105 shadow-xl -translate-y-1' : 'hover:scale-105 hover:-translate-y-1'
-                }`}
+                } ${activeCard === idx ? 'scale-[1.02] shadow-xl -translate-y-1' : 'hover:-translate-y-1'}`}
               >
-                {/* Animated Background */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${item.color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
-                
-                {/* Content */}
                 <div className="relative z-10">
-                  <div className={`p-4 rounded-xl bg-gradient-to-br ${item.color} w-fit mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg`}>
-                    <div className="text-white">
-                      {item.icon}
-                    </div>
+                  <div className={`mb-6 w-fit rounded-[22px] bg-gradient-to-br ${item.color} p-4 text-white shadow-lg transition-transform duration-300 group-hover:scale-105`}>
+                    {item.icon}
                   </div>
-                  
-                  <h4 className="text-xl font-bold text-slate-800 mb-3 group-hover:text-slate-900 transition-colors">
+
+                  <h4 className="mb-3 text-xl font-bold text-slate-800 group-hover:text-slate-900 transition-colors">
                     {item.title}
                   </h4>
-                  
-                  <p className="text-slate-600 text-sm mb-6 leading-relaxed line-clamp-3">
+
+                  <p className="mb-6 text-sm leading-6 text-slate-600 line-clamp-3">
                     {item.description}
                   </p>
-                  
-                  <div className={`inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r ${item.color} text-white font-semibold text-sm transition-all duration-300 group-hover:gap-3 group-hover:shadow-lg group-hover:scale-105`}>
+
+                  <div className={`inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r ${item.color} px-4 py-3 text-sm font-semibold text-white transition-all duration-300 group-hover:gap-3 group-hover:shadow-lg`}>
                     Get Started
                     <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
                 </div>
-
-                {/* Decorative Elements */}
-                <div className="absolute top-4 right-4 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full opacity-20 group-hover:opacity-30 transition-opacity"></div>
-                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full opacity-10 group-hover:opacity-20 transition-opacity"></div>
               </div>
             ))}
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

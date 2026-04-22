@@ -42,7 +42,7 @@ def get_students():
                 ]
             
             # Exclude embedding field from response for performance
-            students = list(students_col.find(query, {"embedding": 0}).sort('studentName', 1))
+            students = list(students_col.find(query, {"embedding": 0, "embeddings": 0}).sort('studentName', 1))
             
             # Convert ObjectId to string for JSON serialization
             for student in students:
@@ -80,7 +80,7 @@ def get_student(student_id):
             return jsonify({"success": False, "error": "User email required for authorization"}), 401
         
         # Get student record
-        student = students_col.find_one({"_id": ObjectId(student_id)}, {"embedding": 0})
+        student = students_col.find_one({"_id": ObjectId(student_id)}, {"embedding": 0, "embeddings": 0})
         if not student:
             return jsonify({"success": False, "error": "Student not found"}), 404
         
@@ -303,7 +303,7 @@ def get_all_students_admin():
             ]
         
         # Get all students (admin view) - exclude embedding for performance
-        students = list(students_col.find(query, {"embedding": 0}).sort('studentName', 1))
+        students = list(students_col.find(query, {"embedding": 0, "embeddings": 0}).sort('studentName', 1))
         
         for student in students:
             student['_id'] = str(student['_id'])
@@ -361,7 +361,7 @@ def search_students_teacher():
         # Execute search (limit to 50 results for performance)
         students = list(students_col.find(
             query, 
-            {"embedding": 0}  # Exclude embedding for performance
+            {"embedding": 0, "embeddings": 0}  # Exclude face vectors for performance
         ).limit(50).sort('studentName', 1))
         
         # Convert ObjectId to string
@@ -394,12 +394,12 @@ def get_student_by_id_teacher(student_id_or_db_id):
             }), 403
         
         # Try to find by studentId first (e.g., "STU001"), then by database _id
-        student = students_col.find_one({"studentId": student_id_or_db_id}, {"embedding": 0})
+        student = students_col.find_one({"studentId": student_id_or_db_id}, {"embedding": 0, "embeddings": 0})
         
         if not student:
             # If not found by studentId, try by database ObjectId
             try:
-                student = students_col.find_one({"_id": ObjectId(student_id_or_db_id)}, {"embedding": 0})
+                student = students_col.find_one({"_id": ObjectId(student_id_or_db_id)}, {"embedding": 0, "embeddings": 0})
             except:
                 pass
         
@@ -563,7 +563,7 @@ def search_students():
         # Execute search
         students = list(students_col.find(
             query, 
-            {"embedding": 0}  # Exclude embedding for performance
+            {"embedding": 0, "embeddings": 0}  # Exclude face vectors for performance
         ).limit(limit).sort('studentName', 1))
         
         for student in students:
@@ -613,7 +613,14 @@ def get_student_stats():
         year_stats = list(students_col.aggregate(year_pipeline))
         
         # Students with face data
-        face_registered = students_col.count_documents({"embedding": {"$exists": True, "$ne": None}})
+        face_registered = students_col.count_documents(
+            {
+                "$or": [
+                    {"embedding": {"$exists": True, "$ne": None}},
+                    {"embeddings": {"$exists": True, "$ne": None}},
+                ]
+            }
+        )
         
         return jsonify({
             "success": True,

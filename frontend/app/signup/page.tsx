@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../services/api";
 import { 
   UserPlus, 
   Mail, 
@@ -11,7 +12,8 @@ import {
   BookOpen,
   ArrowLeft,
   Home,
-  LogIn
+  LogIn,
+  IdCard
 } from "lucide-react";
 
 export default function SignUpPage() {
@@ -20,7 +22,8 @@ export default function SignUpPage() {
     username: "",
     email: "",
     password: "",
-    userType: "student"
+    userType: "student",
+    employeeId: ""
   });
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -31,25 +34,31 @@ export default function SignUpPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.userType === "teacher" && !formData.employeeId.trim()) {
+      setStatus("Employee ID required for teachers");
+      return;
+    }
+
     setIsLoading(true);
     setStatus("Registering...");
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/signup", {
+      const res = await apiFetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      const data = await res.json();
+      const data = await parseApiJson<ApiResponse>(res);
 
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus("Registration successful! Redirecting...");
         setTimeout(() => router.push("/signin"), 1500);
       } else {
         setStatus(data.error || "Registration failed");
       }
-    } catch {
-      setStatus("Error connecting to server");
+    } catch (error) {
+      setStatus(getApiErrorMessage(error, "Unable to register right now."));
     } finally {
       setIsLoading(false);
     }
@@ -113,7 +122,7 @@ export default function SignUpPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, userType: "student" }))}
+                    onClick={() => setFormData(prev => ({ ...prev, userType: "student", employeeId: "" }))}
                     className={`p-3 rounded-xl border-2 transition-all duration-300 flex items-center justify-center gap-2 text-sm font-semibold hover:scale-105 ${
                       formData.userType === "student" 
                         ? "bg-blue-50 border-blue-300 text-blue-700 shadow-lg" 
@@ -135,8 +144,31 @@ export default function SignUpPage() {
                     <BookOpen className="w-4 h-4" />
                     Teacher
                   </button>
-                </div>
               </div>
+
+              {formData.userType === "teacher" && (
+                <div className="mt-4">
+                  <label className="block text-slate-700 text-sm font-semibold mb-2">
+                    Employee ID
+                  </label>
+                  <div className="relative">
+                    <IdCard className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <input
+                      name="employeeId"
+                      type="text"
+                      placeholder="Enter your employee ID"
+                      required={formData.userType === "teacher"}
+                      value={formData.employeeId}
+                      onChange={handleChange}
+                      className="w-full bg-white border-2 border-slate-200 rounded-xl pl-12 pr-4 py-3 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all duration-300"
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">
+                    Teacher accounts need an employee ID for registration.
+                  </p>
+                </div>
+              )}
+            </div>
 
               {/* Username Input */}
               <div>

@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, ArrowLeft, Play, Square, User, Calendar, BookOpen, GraduationCap, Users, CheckCircle2 } from "lucide-react";
+import { Camera, ArrowLeft, Play, Square, User, Calendar, BookOpen, Users, CheckCircle2 } from "lucide-react";
 import CameraCapture, { FaceData } from "../../components/CameraCapture";
+import { apiRequest } from "../../services/api";
 
 export default function DemoSessionPage() {
   const router = useRouter();
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionActive, setSessionActive] = useState(false);
   const [recognitionStarted, setRecognitionStarted] = useState(false);
   const [status, setStatus] = useState("");
   const [facesData, setFacesData] = useState<FaceData[]>([]);
   const [recognizedStudents, setRecognizedStudents] = useState<string[]>([]);
+  const [processingFrame, setProcessingFrame] = useState(false);
+  const [endingSession, setEndingSession] = useState(false);
 
   const [form, setForm] = useState({
     date: "",
@@ -38,16 +40,21 @@ export default function DemoSessionPage() {
 
     setStatus("Creating session...");
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/create_session", {
+      const data = await apiRequest<{
+        session_id: string;
+        students_count: number;
+        reused_existing?: boolean;
+      }>("/api/attendance/create_session", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      const data = await res.json();
       if (data.session_id) {
         setSessionId(data.session_id);
-        setStatus("✅ Session created! Click Start Recognition.");
-        setSessionActive(true);
+        setStatus(
+          data.reused_existing
+            ? `✅ Existing session loaded with ${data.students_count} students.`
+            : `✅ Session created with ${data.students_count} students.`
+        );
       } else {
         setStatus("❌ Failed to create session");
       }
@@ -59,33 +66,33 @@ export default function DemoSessionPage() {
 
   const handleRecognize = useCallback(
     async (imageDataUrl: string) => {
-      // Build payload: include session_id when available, otherwise include filters for demo recognition
-      const payload: any = { image: imageDataUrl };
-      if (sessionId) payload.session_id = sessionId;
-      else {
-        // include optional filters from the form for candidate narrowing
-        if (form.department) payload.department = form.department;
-        if (form.year) payload.year = form.year;
-        if (form.division) payload.division = form.division;
+      if (!sessionId || processingFrame) {
+        return;
       }
 
       try {
-        const res = await fetch("http://localhost:5000/api/attendance/real-mark", {
+        setProcessingFrame(true);
+        const data = await apiRequest<{ faces: Array<FaceData & { status?: string; message?: string }> }>(
+          "/api/attendance/real-mark",
+          {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
+          body: JSON.stringify({ image: imageDataUrl, session_id: sessionId }),
+          }
+        );
 
         if (data.faces && data.faces.length > 0) {
           const face = data.faces[0];
-          if (face.match) {
-            setStatus(`✅ Recognized ${face.match.name}`);
+          if (face.match && face.status === "marked_present") {
+            setStatus(`✅ ${face.match.name} marked present`);
             setRecognizedStudents((prev) => (prev.includes(face.match.name) ? prev : [...prev, face.match.name]));
+          } else if (face.match && face.status === "duplicate") {
+            setStatus(`ℹ️ ${face.match.name} already marked for this session`);
+          } else if (face.match) {
+            setStatus(`✅ Recognized ${face.match.name}`);
           } else {
             setStatus("❌ Face not recognized");
           }
-          setFacesData(data.faces.map((f: FaceData) => ({ box: f.box, match: f.match })));
+          setFacesData(data.faces.map((f) => ({ box: f.box, match: f.match, confidence: f.confidence })));
         } else {
           setStatus("❌ No faces detected");
           setFacesData([]);
@@ -94,12 +101,18 @@ export default function DemoSessionPage() {
         console.error(err);
         setStatus("❌ Recognition failed");
         setFacesData([]);
+      } finally {
+        setProcessingFrame(false);
       }
     },
-    [sessionId, form]
+    [processingFrame, sessionId]
   );
 
   const handleStartRecognition = () => {
+    if (!sessionId) {
+      setStatus("Create a session before starting recognition");
+      return;
+    }
     setRecognitionStarted(true);
     setStatus("Starting live recognition...");
   };
@@ -107,6 +120,32 @@ export default function DemoSessionPage() {
   const handleStopRecognition = () => {
     setRecognitionStarted(false);
     setStatus("Recognition stopped");
+  };
+
+  const handleEndSession = async () => {
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      setEndingSession(true);
+      const data = await apiRequest<{ statistics: { present_count: number; absent_count: number } }>(
+        "/api/attendance/end_session",
+        {
+          method: "POST",
+          body: JSON.stringify({ session_id: sessionId }),
+        }
+      );
+      setRecognitionStarted(false);
+      setStatus(
+        `✅ Session finalized. Present: ${data.statistics.present_count}, Absent: ${data.statistics.absent_count}`
+      );
+    } catch (error) {
+      console.error(error);
+      setStatus("❌ Failed to finalize session");
+    } finally {
+      setEndingSession(false);
+    }
   };
 
   return (
@@ -179,18 +218,27 @@ export default function DemoSessionPage() {
                 </button>
               )}
 
+              {sessionId && (
+                <button
+                  onClick={handleEndSession}
+                  disabled={endingSession}
+                  className="px-6 py-3 rounded-lg font-semibold bg-slate-900 hover:bg-slate-800 text-white border-2 border-slate-900 transition-all duration-300 flex items-center justify-center gap-3 hover:shadow-md hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  {endingSession ? "Finalizing..." : "Finalize Session"}
+                </button>
+              )}
+
               {/* Demo recognition: start without creating a session */}
               {!sessionId && !recognitionStarted && (
                 <button
                   onClick={() => {
-                    setSessionActive(false);
-                    setRecognitionStarted(true);
-                    setStatus("Starting demo recognition...");
+                    setStatus("Create a session before starting recognition.");
                   }}
                   className="px-6 py-3 rounded-lg font-semibold bg-green-100 hover:bg-green-200 text-green-700 border-2 border-green-300 transition-all duration-300 flex items-center justify-center gap-3 hover:shadow-md hover:-translate-y-0.5"
                 >
                   <Play className="w-5 h-5" />
-                  Start Demo Recognition
+                  Session Required
                 </button>
               )}
 
@@ -219,6 +267,13 @@ export default function DemoSessionPage() {
                 <span className="text-gray-600">Students:</span>
                 <span className="font-medium text-gray-800">
                   {recognizedStudents.length}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-gray-200">
+                <span className="text-gray-600">Frame:</span>
+                <span className={`font-medium ${processingFrame ? "text-amber-600" : "text-gray-700"}`}>
+                  {processingFrame ? "Processing" : "Idle"}
                 </span>
               </div>
             </div>

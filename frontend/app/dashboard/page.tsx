@@ -2,44 +2,40 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Users, 
-  Edit3, 
-  Camera, 
-  BarChart3, 
-  LogOut, 
-  User,
-  Menu,
-  X
-} from "lucide-react";
+import { BarChart3, Camera, Edit3, LogOut, Users } from "lucide-react";
+
+import ToastStack, { ToastItem } from "../components/ToastStack";
+import { apiRequest } from "../services/api";
 
 export default function DashboardPage() {
   const router = useRouter();
+
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [username, setUsername] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeCard, setActiveCard] = useState<number | null>(null);
+  const [loadingCard, setLoadingCard] = useState<number | null>(null);
+  const [time, setTime] = useState(new Date());
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const checkAuthStatus = () => {
-      try {
-        const loggedIn = localStorage.getItem("isLoggedIn");
-        const storedUsername = localStorage.getItem("username");
-        const storedEmail = localStorage.getItem("userEmail");
-        
-        if (!loggedIn || loggedIn !== "true") {
-          setIsLoggedIn(false);
-          router.push("/signin");
-        } else {
-          setIsLoggedIn(true);
-          setUsername(storedUsername || "User");
-          setUserEmail(storedEmail || "");
-        }
-      } catch (error) {
-        console.error("localStorage not available:", error);
+      const loggedIn = localStorage.getItem("isLoggedIn");
+      const storedUsername = localStorage.getItem("username");
+      const storedEmail = localStorage.getItem("userEmail");
+
+      if (!loggedIn || loggedIn !== "true") {
         setIsLoggedIn(false);
         router.push("/signin");
+      } else {
+        setIsLoggedIn(true);
+        setUsername(storedUsername || "User");
+        setUserEmail(storedEmail || "");
       }
     };
 
@@ -47,226 +43,129 @@ export default function DashboardPage() {
     return () => clearTimeout(timeoutId);
   }, [router]);
 
+  const pushToast = (title: string, tone: ToastItem["tone"] = "info") => {
+    const id = `${Date.now()}-${Math.random()}`;
+    setToasts((current) => [...current, { id, title, tone }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((item) => item.id !== id));
+    }, 2600);
+  };
+
   const handleLogout = async () => {
     try {
-      await fetch("http://127.0.0.1:5000/api/logout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (error) {
-      console.log("Logout API call failed, but continuing with local logout");
+      await apiRequest("/api/logout", { method: "POST" });
+    } catch {
+      // Ignore network/logout errors and clear client state anyway.
     }
-
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("username");
-    localStorage.removeItem("userEmail");
-    localStorage.removeItem("userId");
-    
+    localStorage.clear();
     router.push("/");
+  };
+
+  const handleCardClick = (index: number, path: string, title: string) => {
+    setLoadingCard(index);
+    pushToast(`${title} opened`, "success");
+
+    setTimeout(() => {
+      router.push(path);
+    }, 500);
   };
 
   const studentManagementOptions = [
     {
       title: "Student Registration",
-      description: "Register new students with complete details and face recognition setup",
+      description: "Register students with face recognition",
       icon: <Users className="w-7 h-7" />,
       path: "/student/registrationform",
       color: "from-blue-500 to-blue-600",
-      bgColor: "bg-blue-50 hover:bg-blue-100",
-      borderColor: "border-blue-200 hover:border-blue-300",
-      iconBg: "bg-blue-500"
     },
     {
-      title: "Update Student Details",
-      description: "Modify existing student information and profile settings",
+      title: "Update Details",
+      description: "Edit student data",
       icon: <Edit3 className="w-7 h-7" />,
       path: "/student/updatedetails",
       color: "from-emerald-500 to-emerald-600",
-      bgColor: "bg-emerald-50 hover:bg-emerald-100",
-      borderColor: "border-emerald-200 hover:border-emerald-300",
-      iconBg: "bg-emerald-500"
     },
     {
-      title: "Face Recognition Demo",
-      description: "Test and demonstrate live face recognition capabilities",
+      title: "Face Recognition",
+      description: "Live face detection demo",
       icon: <Camera className="w-7 h-7" />,
       path: "/student/demo-session",
       color: "from-purple-500 to-purple-600",
-      bgColor: "bg-purple-50 hover:bg-purple-100",
-      borderColor: "border-purple-200 hover:border-purple-300",
-      iconBg: "bg-purple-500"
     },
     {
-      title: "Attendance Records",
-      description: "View comprehensive attendance statistics and reports",
+      title: "Attendance",
+      description: "View attendance reports",
       icon: <BarChart3 className="w-7 h-7" />,
       path: "/student/view-attendance",
-      color: "from-amber-500 to-orange-500",
-      bgColor: "bg-amber-50 hover:bg-amber-100",
-      borderColor: "border-amber-200 hover:border-amber-300",
-      iconBg: "bg-amber-500"
-    }
+      color: "from-orange-500 to-amber-500",
+    },
   ];
 
   if (isLoggedIn === null) {
-    return (
-      <div className="flex items-center justify-center w-full h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-xl text-slate-700 font-medium">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoggedIn === false) {
-    return (
-      <div className="flex items-center justify-center w-full h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-red-500 mx-auto mb-4"></div>
-          <p className="text-xl text-slate-700 font-medium">Redirecting to sign in...</p>
-        </div>
-      </div>
-    );
+    return <div className="text-center mt-20">Loading...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-lg border-b border-slate-200 shadow-sm">
-        <div className="px-4 sm:px-6 py-4">
-          <div className="flex items-center justify-between">
-            {/* Left Section */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden p-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors"
-              >
-                {mobileMenuOpen ? <X className="w-6 h-6 text-slate-700" /> : <Menu className="w-6 h-6 text-slate-700" />}
-              </button>
-              
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
-                  <User className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Student Dashboard</h1>
-                  <p className="text-slate-600 text-sm font-medium">Welcome back, {username}</p>
-                  {userEmail && <p className="text-slate-500 text-xs">{userEmail}</p>}
-                </div>
+    <div className="min-h-screen bg-transparent">
+      <ToastStack items={toasts} onDismiss={(id) => setToasts((current) => current.filter((item) => item.id !== id))} />
+
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+        <header className="rounded-[32px] border border-white/60 bg-[var(--surface)] p-6 shadow-xl shadow-slate-900/5 backdrop-blur">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-3">
+              <p className="text-sm uppercase tracking-[0.22em] text-sky-700">Student workspace</p>
+              <div>
+                <h1 className="text-4xl font-bold text-slate-900">Attendance dashboard</h1>
+                <p className="mt-2 max-w-2xl text-base text-slate-600">
+                  Register faces, manage student details, test recognition, and review attendance without leaving one workspace.
+                </p>
               </div>
             </div>
-
-            {/* Right Section */}
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex flex-col items-start gap-3 lg:items-end">
+              <div className="rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                <p className="text-sm font-semibold text-slate-900">{username}</p>
+                <p className="text-sm text-slate-500">{userEmail}</p>
+                <p className="mt-1 text-xs text-sky-700">{time.toLocaleTimeString()}</p>
+              </div>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors border border-red-200 hover:border-red-300"
+                className="inline-flex items-center gap-2 rounded-2xl bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:-translate-y-0.5 hover:bg-rose-100"
               >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:block font-medium">Logout</span>
+                <LogOut size={18} />
+                Logout
               </button>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-white/95 backdrop-blur-lg border-b border-slate-200 shadow-lg">
-          <div className="px-4 sm:px-6 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {studentManagementOptions.map((option, index) => (
-                <div
-                  key={index}
-                  onClick={() => {
-                    router.push(option.path);
-                    setMobileMenuOpen(false);
-                  }}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 hover:scale-105 hover:shadow-md ${option.bgColor} ${option.borderColor}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg bg-gradient-to-br ${option.color} shadow-sm`}>
-                      <div className="text-white">
-                        {option.icon}
-                      </div>
-                    </div>
-                    <span className="text-slate-700 font-semibold text-sm">{option.title}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content - Student Management Tools Only */}
-      <main className="px-4 sm:px-6 py-8">
-        <div className="max-w-7xl mx-auto">
-          {/* Welcome Message */}
-          <div className="mb-12 text-center">
-            <div className="inline-flex items-center gap-3 mb-4">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span className="text-blue-600 font-semibold text-sm uppercase tracking-wider">Dashboard</span>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-slate-800 mb-3 tracking-tight">
-              Student Management Hub
-            </h2>
-            <p className="text-slate-600 text-lg max-w-2xl mx-auto leading-relaxed">
-              Streamline student operations with our comprehensive face recognition and attendance management system
-            </p>
-          </div>
-
-          {/* Student Management Tools Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {studentManagementOptions.map((option, index) => (
-              <div
-                key={index}
-                onMouseEnter={() => setActiveCard(index)}
-                onMouseLeave={() => setActiveCard(null)}
-                onClick={() => router.push(option.path)}
-                className={`relative p-6 rounded-2xl border-2 transition-all duration-500 cursor-pointer group overflow-hidden bg-white hover:shadow-xl ${
-                  option.borderColor
-                } ${
-                  activeCard === index ? 'scale-105 shadow-xl -translate-y-1' : 'hover:scale-105 hover:-translate-y-1'
-                }`}
-              >
-                {/* Animated Background */}
-                <div className={`absolute inset-0 bg-gradient-to-br ${option.color} opacity-0 group-hover:opacity-5 transition-opacity duration-500`} />
-                
-                {/* Content */}
-                <div className="relative z-10">
-                  <div className={`p-4 rounded-xl bg-gradient-to-br ${option.color} w-fit mb-6 group-hover:scale-110 transition-transform duration-300 shadow-lg`}>
-                    <div className="text-white">
-                      {option.icon}
-                    </div>
-                  </div>
-                  
-                  <h4 className="text-xl font-bold text-slate-800 mb-3 group-hover:text-slate-900 transition-colors">
-                    {option.title}
-                  </h4>
-                  
-                  <p className="text-slate-600 text-sm mb-6 leading-relaxed line-clamp-3">
-                    {option.description}
-                  </p>
-                  
-                  <div className={`inline-flex items-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r ${option.color} text-white font-semibold text-sm transition-all duration-300 group-hover:gap-3 group-hover:shadow-lg group-hover:scale-105`}>
-                    Get Started
-                    <svg className="w-4 h-4 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </div>
-
-                {/* Decorative Elements */}
-                <div className="absolute top-4 right-4 w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full opacity-20 group-hover:opacity-30 transition-opacity"></div>
-                <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full opacity-10 group-hover:opacity-20 transition-opacity"></div>
+        <section className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {studentManagementOptions.map((option, index) => (
+            <button
+              key={option.title}
+              type="button"
+              onMouseEnter={() => setActiveCard(index)}
+              onMouseLeave={() => setActiveCard(null)}
+              onClick={() => handleCardClick(index, option.path, option.title)}
+              className={`group rounded-[28px] border border-white/70 bg-white/90 p-6 text-left shadow-lg shadow-slate-900/5 transition ${
+                activeCard === index ? "scale-[1.02] -translate-y-1" : "hover:-translate-y-1"
+              }`}
+            >
+              <div className={`mb-5 inline-flex rounded-2xl bg-gradient-to-br ${option.color} p-3 text-white shadow-lg`}>
+                {option.icon}
               </div>
-            ))}
-          </div>
-        </div>
-      </main>
+              <h2 className="text-xl font-bold text-slate-900">{option.title}</h2>
+              <p className="mt-2 min-h-12 text-sm leading-6 text-slate-600">{option.description}</p>
+              <div className="mt-6 inline-flex min-w-28 items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">
+                {loadingCard === index ? (
+                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  "Open module"
+                )}
+              </div>
+            </button>
+          ))}
+        </section>
+      </div>
     </div>
   );
 }

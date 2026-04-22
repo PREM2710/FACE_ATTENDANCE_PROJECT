@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../../services/api";
 import { 
   ArrowLeft, 
   User, 
@@ -39,6 +40,10 @@ interface FilterOptions {
   studentId: string;
   search: string;
 }
+
+type StudentsResponse = ApiResponse & {
+  students: Student[];
+};
 
 export default function UpdateStudentDetails() {
   const router = useRouter();
@@ -102,7 +107,7 @@ export default function UpdateStudentDetails() {
   const fetchStudents = async (email: string, type: "student" | "teacher") => {
     try {
       let url = "http://127.0.0.1:5000/api/students";
-      let headers: Record<string, string> = {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "X-User-Type": type
       };
@@ -116,10 +121,11 @@ export default function UpdateStudentDetails() {
         headers["X-User-Email"] = email;
       }
 
-      const res = await fetch(url, { headers });
-      const data = await res.json();
+      const apiPath = url.replace("http://127.0.0.1:5000", "");
+      const res = await apiFetch(apiPath, { headers });
+      const data = await parseApiJson<StudentsResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStudents(data.students);
         if (type === "teacher") {
           setAllStudents(data.students); // Keep original list for filtering
@@ -131,7 +137,7 @@ export default function UpdateStudentDetails() {
         setStatus(data.error || "Error fetching student records");
       }
     } catch (error) {
-      setStatus("Error connecting to server");
+      setStatus(getApiErrorMessage(error, "Unable to load student records right now."));
     } finally {
       setLoading(false);
     }
@@ -204,7 +210,7 @@ export default function UpdateStudentDetails() {
     setStatus("Updating student details...");
 
     try {
-      let headers: Record<string, string> = {
+      const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "X-User-Type": userType
       };
@@ -217,7 +223,7 @@ export default function UpdateStudentDetails() {
         headers["X-User-Email"] = userEmail;
       }
 
-      const res = await fetch(`http://127.0.0.1:5000/api/students/${selectedStudent._id}`, {
+      const res = await apiFetch(`/api/students/${selectedStudent._id}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
@@ -233,9 +239,9 @@ export default function UpdateStudentDetails() {
         }),
       });
       
-      const data = await res.json();
+      const data = await parseApiJson<ApiResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus(`✅ ${userType === "teacher" ? "Student" : "Your"} details updated successfully!`);
         fetchStudents(userEmail, userType); // Refresh data
       } else {
@@ -245,8 +251,8 @@ export default function UpdateStudentDetails() {
           setStatus(`❌ ${data.error}`);
         }
       }
-    } catch (err) {
-      setStatus("❌ Error connecting to server");
+    } catch (error) {
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to update student details right now.")}`);
     } finally {
       setUpdating(false);
     }
@@ -262,7 +268,7 @@ export default function UpdateStudentDetails() {
     }
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/students/${studentId}`, {
+      const res = await apiFetch(`/api/students/${studentId}`, {
         method: "DELETE",
         headers: { 
           "Content-Type": "application/json",
@@ -271,9 +277,9 @@ export default function UpdateStudentDetails() {
         }
       });
       
-      const data = await res.json();
+      const data = await parseApiJson<ApiResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus(`✅ Student ${studentName} deleted successfully!`);
         fetchStudents(userEmail, userType); // Refresh list
         if (selectedStudent?._id === studentId) {
@@ -286,8 +292,8 @@ export default function UpdateStudentDetails() {
           setStatus(`❌ ${data.error}`);
         }
       }
-    } catch (err) {
-      setStatus("❌ Error connecting to server");
+    } catch (error) {
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to delete the student right now.")}`);
     }
   };
 

@@ -17,6 +17,7 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
   const [cameraError, setCameraError] = useState<string>("");
   const [currentStep, setCurrentStep] = useState(0);
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
 
   // Start camera
   const startCamera = async () => {
@@ -71,12 +72,13 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
     setCurrentStep(currentStep + 1);
 
     if (updatedImages.length === directions.length) {
+      setSubmitting(true);
       onCapture(updatedImages); // Send all 5 images to parent
     }
   };
 
   return (
-    <div className="flex flex-col items-center space-y-4">
+    <div className="flex flex-col items-center space-y-5">
       {/* Camera Status */}
       <div className="flex items-center space-x-2 text-sm">
         <div
@@ -98,16 +100,16 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
       </div>
 
       {/* Video */}
-      <div className="relative">
+      <div className="relative w-full max-w-2xl">
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          className={`rounded-lg shadow-md w-full max-w-md ${
+          className={`w-full rounded-[28px] border border-slate-200 bg-slate-950 shadow-xl shadow-slate-900/10 ${
             cameraStatus === "active" ? "block" : "hidden"
           }`}
-          style={{ maxHeight: "360px" }}
+          style={{ maxHeight: "420px" }}
         />
 
         {cameraStatus === "loading" && (
@@ -120,7 +122,7 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
         )}
 
         {cameraStatus === "stopped" && (
-          <div className="flex items-center justify-center bg-gray-100 rounded-lg w-full max-w-md h-60">
+          <div className="flex h-60 items-center justify-center rounded-[28px] bg-slate-100">
             <p className="text-gray-600">Camera is stopped</p>
           </div>
         )}
@@ -141,13 +143,17 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
       )}
 
       {cameraStatus === "active" && currentStep < directions.length && (
-        <div className="text-center text-white space-y-2">
-          <p className="text-lg">
-            Please look: <span className="font-bold">{directions[currentStep]}</span>
+        <div className="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white p-5 text-center shadow-lg shadow-slate-900/5">
+          <div className="mb-4 flex items-center justify-between text-sm text-slate-500">
+            <span>Capture {currentStep + 1} of {directions.length}</span>
+            <span>{capturedImages.length} saved</span>
+          </div>
+          <p className="text-lg font-semibold text-slate-900">
+            Please look: <span className="text-sky-700">{directions[currentStep]}</span>
           </p>
           <button
             onClick={captureImage}
-            className="px-6 py-2 bg-blue-600 rounded-lg hover:bg-blue-700"
+            className="mt-4 rounded-2xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-800"
           >
             Capture
           </button>
@@ -155,8 +161,10 @@ const MultiCameraCapture: React.FC<MultiCameraCaptureProps> = ({ onCapture }) =>
       )}
 
       {currentStep >= directions.length && (
-        <div className="text-center text-green-400">
-          <p>✅ All 5 images captured successfully!</p>
+        <div className="w-full max-w-2xl rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 text-center text-emerald-800">
+          <p className="font-semibold">
+            {submitting ? "Uploading face samples..." : "All 5 images captured successfully."}
+          </p>
         </div>
       )}
     </div>

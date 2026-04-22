@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../services/api";
 import { 
   LogIn, 
   Mail, 
@@ -15,6 +16,16 @@ import {
 } from "lucide-react";
 
 export default function SignInPage() {
+  type SignInResponse = ApiResponse & {
+    user?: {
+      _id?: string;
+      username?: string;
+      name?: string;
+      employeeId?: string;
+      studentId?: string;
+    };
+  };
+
   const router = useRouter();
   const [formData, setFormData] = useState({ 
     email: "", 
@@ -35,7 +46,7 @@ export default function SignInPage() {
     setStatus("Signing in...");
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/signin", {
+      const res = await apiFetch("/api/signin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -45,9 +56,9 @@ export default function SignInPage() {
         }),
       });
 
-      const data = await res.json();
+      const data = await parseApiJson<SignInResponse>(res);
 
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus("Login successful! Redirecting...");
         
         // Store login state and user info in localStorage
@@ -81,8 +92,8 @@ export default function SignInPage() {
       } else {
         setStatus(data.error || "Invalid credentials");
       }
-    } catch {
-      setStatus("Error connecting to server");
+    } catch (error) {
+      setStatus(getApiErrorMessage(error, "Unable to sign in right now."));
     } finally {
       setIsLoading(false);
     }

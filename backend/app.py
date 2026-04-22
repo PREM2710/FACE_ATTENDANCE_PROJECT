@@ -1,17 +1,33 @@
 # app.py - OPTIMIZED VERSION
-import os
-import time
 import logging
+import os
+import sys
 import threading
-from flask import Flask
+import time
+
+import numpy as np
+from dotenv import load_dotenv
+from flask import Flask, jsonify
+from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from pymongo import MongoClient
-from dotenv import load_dotenv
-from flask_bcrypt import Bcrypt
-import numpy as np
+from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
+
+# Keep DeepFace artifacts inside the project so Windows permissions do not
+# block startup when the library initializes its home directory.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEEPFACE_HOME = os.path.join(BASE_DIR, ".deepface")
+os.environ.setdefault("DEEPFACE_HOME", DEEPFACE_HOME)
+os.makedirs(DEEPFACE_HOME, exist_ok=True)
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 # Blueprint imports
-from auth.routes import auth_bp
+from auth.routes import auth_bp, bcrypt as auth_bcrypt
+from services.attendance_service import AttendanceService
+from services.face_recognition_service import FaceRecognitionService
 
 # Optional student/teacher blueprints
 try:
@@ -45,17 +61,32 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+DEFAULT_MONGODB_URI = (
+    "mongodb://127.0.0.1:27017/facerecognition"
+)
+
 # MongoDB setup
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+MONGODB_URI = os.getenv("MONGODB_URI", DEFAULT_MONGODB_URI)
 DB_NAME = os.getenv("DATABASE_NAME", "facerecognition")
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "students")
 THRESHOLD = float(os.getenv("THRESHOLD", "0.6"))
 
-client = MongoClient(MONGODB_URI)
+client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
 db = client[DB_NAME]
 students_collection = db[COLLECTION_NAME]
 attendance_db = client["facerecognition_db"]
 attendance_collection = attendance_db["attendance_records"]
+
+
+def is_mongodb_available():
+    """Check whether MongoDB is reachable before handling database-backed APIs."""
+    try:
+        client.admin.command("ping")
+        return True
+    except ServerSelectionTimeoutError:
+        return False
+    except PyMongoError:
+        return False
 
 # OPTIMIZED MODEL MANAGER CLASS
 class ModelManager:
@@ -180,8 +211,18 @@ app.config["ATTENDANCE_COLLECTION"] = attendance_collection
 # CRITICAL: Pass model manager to Flask config so blueprints can access it
 app.config["MODEL_MANAGER"] = model_manager
 app.config["MTCNN_DETECTOR"] = model_manager.get_detector()
+app.config["FACE_RECOGNITION_SERVICE"] = FaceRecognitionService(
+    model_manager=model_manager,
+    students_collection=students_collection,
+    threshold=THRESHOLD,
+)
+app.config["ATTENDANCE_SERVICE"] = AttendanceService(
+    attendance_collection=attendance_collection,
+    students_collection=students_collection,
+    recognition_service=app.config["FACE_RECOGNITION_SERVICE"],
+)
 
-bcrypt = Bcrypt(app)
+auth_bcrypt.init_app(app)
 
 # Health check endpoint
 @app.route('/health', methods=['GET'])
@@ -189,13 +230,34 @@ def health_check():
     """Health check endpoint to verify model status"""
     model_status = model_manager.is_ready()
     model_health = model_manager.health_check()
+    mongodb_status = is_mongodb_available()
 
     return {
-        "status": "healthy" if model_status and model_health else "unhealthy",
+        "status": "healthy" if model_status and model_health and mongodb_status else "unhealthy",
         "models_ready": model_status,
         "models_healthy": model_health,
+        "mongodb_available": mongodb_status,
+        "mongodb_uri": MONGODB_URI,
         "timestamp": time.time()
     }
+
+
+@app.errorhandler(ServerSelectionTimeoutError)
+def handle_mongodb_timeout(_error):
+    logger.error("MongoDB is not available for the incoming request")
+    return jsonify({
+        "success": False,
+        "error": "MongoDB is not available. Please make sure your local MongoDB server is running."
+    }), 503
+
+
+@app.errorhandler(PyMongoError)
+def handle_mongodb_error(error):
+    logger.error("MongoDB request failed: %s", error)
+    return jsonify({
+        "success": False,
+        "error": "Database request failed. Please check your local MongoDB connection and try again."
+    }), 500
 
 # Register blueprints
 app.register_blueprint(auth_bp)

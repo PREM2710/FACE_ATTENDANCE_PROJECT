@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../../services/api";
 
 interface Student {
   _id: string;
@@ -25,6 +26,14 @@ interface SearchFilters {
   division: string;
   studentName: string;
 }
+
+type TeacherStudentsResponse = ApiResponse & {
+  students: Student[];
+};
+
+type TeacherStudentResponse = ApiResponse & {
+  student?: Student;
+};
 
 export default function TeacherUpdateStudentDetails() {
   const router = useRouter();
@@ -73,7 +82,7 @@ export default function TeacherUpdateStudentDetails() {
           setIsAuthed(true);
           setUserType(utype);
         }
-      } catch (error) {
+      } catch {
         setIsAuthed(false);
         router.replace("/signin");
       }
@@ -124,7 +133,7 @@ export default function TeacherUpdateStudentDetails() {
         }
       });
 
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/students/search?${params}`, {
+      const res = await apiFetch(`/api/teacher/students/search?${params}`, {
         headers: {
           "Content-Type": "application/json",
           "X-User-Type": "teacher",
@@ -132,9 +141,9 @@ export default function TeacherUpdateStudentDetails() {
         }
       });
 
-      const data = await res.json();
+      const data = await parseApiJson<TeacherStudentsResponse>(res);
 
-      if (data.success) {
+      if (res.ok && data.success) {
         setSearchResults(data.students);
         if (data.students.length === 0) {
           setStatus("No students found matching your search criteria");
@@ -146,7 +155,7 @@ export default function TeacherUpdateStudentDetails() {
         setSearchResults([]);
       }
     } catch (error) {
-      setStatus("❌ Error connecting to server");
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to search students right now.")}`);
       setSearchResults([]);
     } finally {
       setSearching(false);
@@ -158,7 +167,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${selectedStudent._id}`, {
+      const res = await apiFetch(`/api/teacher/student/${selectedStudent._id}`, {
         headers: {
           "Content-Type": "application/json",
           "X-User-Type": "teacher",
@@ -166,9 +175,9 @@ export default function TeacherUpdateStudentDetails() {
         }
       });
 
-      const data = await res.json();
+      const data = await parseApiJson<TeacherStudentResponse>(res);
 
-      if (data.success && data.student) {
+      if (res.ok && data.success && data.student) {
         setStudent(data.student);
         setOriginalStudent({ ...data.student });
         setStatus(`Selected student: ${data.student.studentName}`);
@@ -176,7 +185,7 @@ export default function TeacherUpdateStudentDetails() {
         setStatus(`❌ ${data.error || "Could not load student details"}`);
       }
     } catch (error) {
-      setStatus("❌ Error loading student details");
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to load student details right now.")}`);
     } finally {
       setLoading(false);
     }
@@ -199,7 +208,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("Updating student details...");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${student._id}`, {
+      const res = await apiFetch(`/api/teacher/student/${student._id}`, {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
@@ -218,9 +227,9 @@ export default function TeacherUpdateStudentDetails() {
         }),
       });
       
-      const data = await res.json();
+      const data = await parseApiJson<ApiResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus("✅ Student details updated successfully!");
         setOriginalStudent({ ...student });
         // Update search results if student is in the list
@@ -228,8 +237,8 @@ export default function TeacherUpdateStudentDetails() {
       } else {
         setStatus(`❌ ${data.error}`);
       }
-    } catch (err) {
-      setStatus("❌ Error connecting to server");
+    } catch (error) {
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to update student details right now.")}`);
     } finally {
       setUpdating(false);
     }
@@ -248,7 +257,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("Deleting student...");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${student._id}`, {
+      const res = await apiFetch(`/api/teacher/student/${student._id}`, {
         method: "DELETE",
         headers: { 
           "Content-Type": "application/json",
@@ -257,9 +266,9 @@ export default function TeacherUpdateStudentDetails() {
         }
       });
       
-      const data = await res.json();
+      const data = await parseApiJson<ApiResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus(`✅ Student ${student.studentName} deleted successfully!`);
         setStudent(null);
         setOriginalStudent(null);
@@ -268,8 +277,8 @@ export default function TeacherUpdateStudentDetails() {
       } else {
         setStatus(`❌ ${data.error}`);
       }
-    } catch (err) {
-      setStatus("❌ Error connecting to server");
+    } catch (error) {
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to delete the student right now.")}`);
     } finally {
       setUpdating(false);
     }
@@ -309,7 +318,7 @@ export default function TeacherUpdateStudentDetails() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Update Student Details</h1>
-            <p className="text-gray-600">Search and update any student's information</p>
+            <p className="text-gray-600">Search and update any student&apos;s information</p>
           </div>
           <button
             onClick={() => router.push(dashboardPath)}
@@ -641,9 +650,9 @@ export default function TeacherUpdateStudentDetails() {
           <ul className="text-sm text-yellow-700 space-y-1">
             <li>• Use the advanced search filters to find students by ID, name, department, year, or division</li>
             <li>• Click on a student from the search results to select and view their details</li>
-            <li>• Edit any field in the student information form and click "Save Changes"</li>
-            <li>• Use "Reset" to undo unsaved changes</li>
-            <li>• Be careful with the "Delete" option - it cannot be undone</li>
+            <li>• Edit any field in the student information form and click &quot;Save Changes&quot;</li>
+            <li>• Use &quot;Reset&quot; to undo unsaved changes</li>
+            <li>• Be careful with the &quot;Delete&quot; option - it cannot be undone</li>
           </ul>
         </div>
       </div>

@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, ArrowLeft, Play, Square, User, BarChart3 } from "lucide-react";
-import CameraCapture, { FaceData } from "../../components/CameraCapture";
+import CameraCapture from "../../components/CameraCapture";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../../services/api";
 
 interface RecognizeResult {
   match: { user_id: string; name: string } | null;
@@ -12,33 +13,45 @@ interface RecognizeResult {
   box?: [number, number, number, number];
 }
 
+type DemoRecognizeResponse = ApiResponse & {
+  faces?: RecognizeResult[];
+  processed_image?: string;
+};
+
 export default function DemoSession() {
   const router = useRouter();
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [lastResult, setLastResult] = useState<RecognizeResult | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
 
   const handleRecognize = useCallback(async (dataUrl: string) => {
     if (!isLiveActive) return;
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/demo/recognize", {
+      const res = await apiFetch("/api/demo/recognize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: dataUrl }),
       });
-      const data = await res.json();
+      const data = await parseApiJson<DemoRecognizeResponse>(res);
 
-      if (data.success && data.faces && data.faces.length > 0) {
+      if (res.ok && data.success && data.faces && data.faces.length > 0) {
         const face = data.faces[0];
         setLastResult(face);
         setProcessedImage(data.processed_image || null);
+        setStatus("");
       } else {
         setLastResult(null);
         setProcessedImage(null);
+        setStatus(res.ok ? "" : (data.error || "Recognition API is not available right now."));
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      const message = getApiErrorMessage(error, "Recognition API is not available right now.");
+      setStatus(message);
+      setLastResult(null);
+      setProcessedImage(null);
+      console.error(message);
     }
   }, [isLiveActive]);
 
@@ -203,6 +216,12 @@ export default function DemoSession() {
 
               {/* Results Content */}
               <div className="space-y-6">
+                {status && (
+                  <div className="p-4 rounded-xl bg-amber-50 border-2 border-amber-200 text-amber-800 shadow-sm">
+                    {status}
+                  </div>
+                )}
+
                 {/* Status Card */}
                 <div className={`p-4 rounded-xl border-2 transition-all ${
                   lastResult?.match 
@@ -267,7 +286,7 @@ export default function DemoSession() {
                   <ul className="text-slate-600 text-sm space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                      Click "Start Demo" to begin face recognition
+                      Click &quot;Start Demo&quot; to begin face recognition
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
@@ -279,7 +298,7 @@ export default function DemoSession() {
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                      Click "Stop Demo" to end the session
+                      Click &quot;Stop Demo&quot; to end the session
                     </li>
                   </ul>
                 </div>

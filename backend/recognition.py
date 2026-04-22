@@ -7,7 +7,7 @@ import numpy as np
 import time
 
 # ----------------- MongoDB Setup -----------------
-MONGODB_URI = "mongodb+srv://Kamlesh-21:Guru2004@attendencesystem.nlapsic.mongodb.net/Attendencesystem?retryWrites=true&w=majority&appName=Attendencesystem"
+MONGODB_URI = "mongodb://127.0.0.1:27017/facerecognition_db"
 client = MongoClient(MONGODB_URI)
 db = client['facerecognition_db']
 collection = db['users']

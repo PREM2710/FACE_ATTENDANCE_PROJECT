@@ -2,22 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-// XLSX is dynamically imported in the browser-only export function to avoid
-// bundling issues on the server (e.g. "fs" not found). Do not import at module top-level.
-
-interface AttendanceRecord {
-  _id: string;
-  studentId: string;
-  studentName: string;
-  date: string;
-  time: string;
-  status: "present" | "absent";
-  confidence: number;
-}
+import StatusPill from "../../components/StatusPill";
+import { AttendanceRecord, AttendanceStats, SessionHistoryItem } from "../../models/attendance";
+import { apiRequest } from "../../services/api";
+import { formatDisplayDate, formatDisplayTime } from "../../utils/format";
 
 export default function ViewAttendance() {
   const router = useRouter();
-  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [attendanceData, setAttendanceData] = useState<Array<AttendanceRecord & { _id: string }>>([]);
+  const [history, setHistory] = useState<SessionHistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState("");
   const [filterDepartment, setFilterDepartment] = useState("");
@@ -25,7 +18,7 @@ export default function ViewAttendance() {
   const [filterDivision, setFilterDivision] = useState("");
   const [filterSubject, setFilterSubject] = useState("");
   const [filterStudentId, setFilterStudentId] = useState("");
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<AttendanceStats>({
     totalStudents: 0,
     presentToday: 0,
     absentToday: 0,
@@ -48,29 +41,16 @@ export default function ViewAttendance() {
       if (filterSubject) params.set("subject", filterSubject);
       if (filterStudentId) params.set("student_id", filterStudentId);
 
-      const res = await fetch(`http://127.0.0.1:5000/api/attendance?${params.toString()}`);
-      const raw = await res.text();
-      let data: any;
-      try {
-        data = JSON.parse(raw);
-      } catch (err) {
-        console.error("Failed to parse /api/attendance response as JSON. status=", res.status, "body=", raw);
-        throw err;
-      }
-
-      if (data && data.success) {
-        const mappedData: AttendanceRecord[] = data.attendance.map((record: any, idx: number) => ({
-          _id: record.studentId || `row-${idx}`,
-          studentId: record.studentId || record.student_id || "-",
-          studentName: record.studentName || record.student_name || "-",
-          date: record.date || data.date || selectedDate,
-          time: record.markedAt || record.time || "-",
-          status: record.status || "present",
-          confidence: record.confidence || 0,
-        }));
-        setAttendanceData(mappedData);
-        setStats(data.stats);
-      }
+      const data = await apiRequest<{ attendance: AttendanceRecord[]; stats: AttendanceStats; history: SessionHistoryItem[] }>(
+        `/api/attendance?${params.toString()}`
+      );
+      const mappedData = data.attendance.map((record, idx) => ({
+        ...record,
+        _id: `${record.studentId}-${record.date}-${idx}`,
+      }));
+      setAttendanceData(mappedData);
+      setStats(data.stats);
+      setHistory(data.history || []);
       setSearched(true);
     } catch (error) {
       console.error("Error fetching attendance:", error);
@@ -88,47 +68,34 @@ export default function ViewAttendance() {
       if (filterDivision) params.set("division", filterDivision);
       if (filterSubject) params.set("subject", filterSubject);
 
-      const res = await fetch(`http://127.0.0.1:5000/api/attendance/export?${params.toString()}`);
-      const raw = await res.text();
-      let data: any;
-      try {
-        data = JSON.parse(raw);
-      } catch (err) {
-        console.error("Failed to parse /api/attendance/export response as JSON. status=", res.status, "body=", raw);
-        throw err;
-      }
-      if (data && data.success) {
-        // Dynamic import so bundlers (Next.js SSR) don't try to include node-only deps
-        const XLSX = await import("xlsx");
-        const worksheet = XLSX.utils.json_to_sheet(data.data);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
-        XLSX.writeFile(workbook, `attendance_${selectedDate || "export"}.xlsx`);
-      }
+      const data = await apiRequest<{ data: AttendanceRecord[] }>(`/api/attendance/export?${params.toString()}`);
+      const XLSX = await import("xlsx");
+      const worksheet = XLSX.utils.json_to_sheet(data.data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
+      XLSX.writeFile(workbook, `attendance_${selectedDate || "export"}.xlsx`);
     } catch (error) {
       console.error("Error exporting excel:", error);
     }
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-orange-50 to-red-100 p-6">
+    <main className="min-h-screen bg-transparent p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Attendance Records</h1>
-            <p className="text-gray-600">View and manage student attendance data</p>
+            <h1 className="text-4xl font-bold text-slate-900">Attendance records</h1>
+            <p className="text-slate-600">Search attendance, review session history, and export reports.</p>
           </div>
           <button
             onClick={() => router.push("/dashboard")}
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
           >
             Back to Dashboard
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white p-6 rounded-lg shadow-md mb-8">
+        <div className="mb-8 rounded-[28px] border border-white/70 bg-white/90 p-6 shadow-xl shadow-slate-900/5">
           <div className="flex flex-wrap gap-4 items-center justify-between">
             <div className="flex gap-4">
               <div>
@@ -137,7 +104,7 @@ export default function ViewAttendance() {
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 />
               </div>
               <div>
@@ -145,7 +112,7 @@ export default function ViewAttendance() {
                 <select
                   value={filterYear}
                   onChange={(e) => setFilterYear(e.target.value)}
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 >
                   <option value="">All Years</option>
                   <option value="1st Year">1st Year</option>
@@ -159,7 +126,7 @@ export default function ViewAttendance() {
                 <select
                   value={filterDivision}
                   onChange={(e) => setFilterDivision(e.target.value)}
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 >
                   <option value="">All Divisions</option>
                   <option value="A">A</option>
@@ -173,7 +140,7 @@ export default function ViewAttendance() {
                   value={filterSubject}
                   onChange={(e) => setFilterSubject(e.target.value)}
                   placeholder="Subject name"
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 />
               </div>
               <div>
@@ -182,7 +149,7 @@ export default function ViewAttendance() {
                   value={filterStudentId}
                   onChange={(e) => setFilterStudentId(e.target.value)}
                   placeholder="Student Id"
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 />
               </div>
               <div>
@@ -190,7 +157,7 @@ export default function ViewAttendance() {
                 <select
                   value={filterDepartment}
                   onChange={(e) => setFilterDepartment(e.target.value)}
-                  className="border border-gray-300 px-3 py-2 rounded-lg text-gray-900 focus:ring-2 focus:ring-blue-500"
+                  className="rounded-2xl border border-slate-200 px-3 py-2 text-slate-900 focus:ring-2 focus:ring-sky-200"
                 >
                   <option value="">All Departments</option>
                   <option value="Computer Science">Computer Science</option>
@@ -203,44 +170,42 @@ export default function ViewAttendance() {
             <div className="flex gap-4">
               <button
                 onClick={fetchAttendanceData}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
               >
-                🔍 Search
+                Search
               </button>
               <button
                 onClick={exportExcel}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white"
               >
-                📑 Export Excel
+                Export Excel
               </button>
             </div>
           </div>
         </div>
 
-        {/* Stats */}
         {attendanceData.length > 0 && (
           <div className="grid md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+            <div className="rounded-[24px] bg-white/90 p-6 text-center shadow-lg shadow-slate-900/5">
               <div className="text-3xl font-bold text-blue-600">{stats.totalStudents}</div>
               <div className="text-sm text-gray-600">Total Students</div>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+            <div className="rounded-[24px] bg-white/90 p-6 text-center shadow-lg shadow-slate-900/5">
               <div className="text-3xl font-bold text-green-600">{stats.presentToday}</div>
               <div className="text-sm text-gray-600">Present Today</div>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+            <div className="rounded-[24px] bg-white/90 p-6 text-center shadow-lg shadow-slate-900/5">
               <div className="text-3xl font-bold text-red-600">{stats.absentToday}</div>
               <div className="text-sm text-gray-600">Absent Today</div>
             </div>
-            <div className="bg-white p-6 rounded-lg shadow-md text-center">
+            <div className="rounded-[24px] bg-white/90 p-6 text-center shadow-lg shadow-slate-900/5">
               <div className="text-3xl font-bold text-purple-600">{stats.attendanceRate}%</div>
               <div className="text-sm text-gray-600">Attendance Rate</div>
             </div>
           </div>
         )}
 
-        {/* Attendance Table */}
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+        <div className="mb-8 rounded-[28px] bg-white/90 shadow-xl shadow-slate-900/5 overflow-hidden">
           <div className="p-6 border-b border-gray-200">
             <h3 className="text-lg font-semibold text-gray-800">
               Attendance {selectedDate ? `for ${new Date(selectedDate).toLocaleDateString()}` : ""}
@@ -295,29 +260,49 @@ export default function ViewAttendance() {
                         {record.studentName}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {new Date(record.date).toLocaleDateString()}
+                        {formatDisplayDate(record.date)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {record.time}
+                        {formatDisplayTime(record.markedAt)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-1 text-xs rounded-full ${
-                            record.status === "present"
-                              ? "bg-green-100 text-green-800"
-                              : "bg-red-100 text-red-800"
-                          }`}
-                        >
-                          {record.status}
-                        </span>
+                        <StatusPill label={record.status} tone={record.status === "present" ? "success" : "danger"} />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {record.confidence}%
+                        {record.markedAt ? "Captured" : "-"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-[28px] bg-white/90 p-6 shadow-xl shadow-slate-900/5">
+          <div className="mb-4">
+            <h2 className="text-2xl font-bold text-slate-900">Session history</h2>
+            <p className="text-sm text-slate-500">Recent sessions matching your filters.</p>
+          </div>
+          {history.length ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {history.map((item) => (
+                <div key={item.sessionId} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-semibold text-slate-900">{item.subject}</p>
+                    <StatusPill label={item.finalized ? "Closed" : "Open"} tone={item.finalized ? "neutral" : "warning"} />
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">{formatDisplayDate(item.date)}</p>
+                  <p className="mt-3 text-sm text-slate-600">{item.department} • {item.year} • Division {item.division}</p>
+                  <p className="mt-2 text-sm font-medium text-slate-800">
+                    {item.presentCount} / {item.studentCount} present
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+              No matching sessions yet.
             </div>
           )}
         </div>

@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import *
-import os, cv2
+import os 
+import cv2
 import shutil
 import csv
 import numpy as np

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import MultiCameraCapture from "../../components/MultiCameraCapture";
+import { apiFetch, getApiErrorMessage, parseApiJson, type ApiResponse } from "../../services/api";
 import { 
   ArrowLeft, 
   User, 
@@ -15,7 +16,8 @@ import {
   Camera,
   Home,
   IdCard,
-  GraduationCap
+  GraduationCap,
+  type LucideIcon
 } from "lucide-react";
 
 interface StudentData {
@@ -30,6 +32,10 @@ interface StudentData {
 }
 
 export default function StudentRegistrationForm() {
+  type RegisterStudentResponse = ApiResponse & {
+    success?: boolean;
+  };
+
   const router = useRouter();
   const [formData, setFormData] = useState<StudentData>({
     studentName: "",
@@ -115,7 +121,7 @@ export default function StudentRegistrationForm() {
     setStatus("Registering student...");
     try {
       const headerEmail = (typeof window !== 'undefined' && localStorage.getItem('userEmail')) || formData.email;
-      const res = await fetch("http://127.0.0.1:5000/api/register-student", {
+      const res = await apiFetch("/api/register-student", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -127,16 +133,16 @@ export default function StudentRegistrationForm() {
           images // send the array of 5 images
         }),
       });
-      const data = await res.json();
+      const data = await parseApiJson<RegisterStudentResponse>(res);
       
-      if (data.success) {
+      if (res.ok && data.success) {
         setStatus(`✅ Student registered successfully! ID: ${formData.studentId}`);
         setTimeout(() => router.replace(dashboardPath), 1200);
       } else {
         setStatus(`❌ ${data.error}`);
       }
-    } catch (err) {
-      setStatus("❌ Error connecting to server");
+    } catch (error) {
+      setStatus(`❌ ${getApiErrorMessage(error, "Unable to register student right now.")}`);
     }
   };
 
@@ -308,7 +314,7 @@ interface InputProps {
   name: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  icon: any;
+  icon: LucideIcon;
   label: string;
   placeholder?: string;
   type?: string;
@@ -340,7 +346,7 @@ interface SelectProps {
   name: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
-  icon: any;
+  icon: LucideIcon;
   label: string;
   options: string[];
   placeholder?: string;
